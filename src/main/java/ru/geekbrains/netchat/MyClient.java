@@ -10,10 +10,9 @@ import java.io.IOException;
 import java.net.Socket;
 
 public class MyClient extends JFrame {
+    private static final String WRONG_CREDENTIALS = "Неверные логин/пароль";
+    private static final String CREDENTIALS_IN_USE = "Учетная запись уже используется";
 
-//    private static final long MINUTE = 60_000L;
-//    private static final long AUTH_TIMEOUT = 2 * MINUTE;
-//    private static final long SEND_TIMEOUT = 3 * MINUTE;
     private JTextField msgInputField;
     private JTextArea chatArea;
     private JTextField loginField;
@@ -22,13 +21,9 @@ public class MyClient extends JFrame {
     private Socket socket;
     private DataInputStream in;
     private DataOutputStream out;
-    private boolean isAuthorized;
-    //    private long startTime;
-//    private long lastSentTime;
 
     public MyClient() {
         prepareGUI();
-//        lastSentTime = System.currentTimeMillis();
     }
 
     public void prepareGUI() {
@@ -90,20 +85,16 @@ public class MyClient extends JFrame {
     private void addWindowClosingAction() {
         addWindowListener(new WindowAdapter() {
             @Override
-            public void windowClosing(WindowEvent e) {
-                super.windowClosing(e);
+            public void windowClosing(WindowEvent event) {
+                super.windowClosing(event);
                 try {
                     out.writeUTF("/end");
                     closeConnection();
-                } catch (IOException exc) {
-                    exc.printStackTrace();
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
             }
         });
-    }
-
-    private void setAuthorized(boolean authStatus) {
-        isAuthorized = authStatus;
     }
 
     public void closeConnection() {
@@ -130,7 +121,6 @@ public class MyClient extends JFrame {
                 out.writeUTF(msgInputField.getText());
                 msgInputField.setText("");
                 msgInputField.grabFocus();
-//                lastSentTime = System.currentTimeMillis();
             } catch (IOException e) {
                 e.printStackTrace();
                 JOptionPane.showMessageDialog(null, "Ошибка отправки сообщения");
@@ -146,6 +136,7 @@ public class MyClient extends JFrame {
             out.writeUTF("/auth " + loginField.getText() + " " + String.valueOf(passField.getPassword()));
             loginField.setText("");
             passField.setText("");
+            msgInputField.grabFocus();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -153,12 +144,10 @@ public class MyClient extends JFrame {
 
     public void start() {
         try {
-            setAuthorized(false);
             socket = new Socket("localhost", 8189);
             in = new DataInputStream(socket.getInputStream());
             out = new DataOutputStream(socket.getOutputStream());
             Thread t = new Thread(this::run);
-//            startTime = System.currentTimeMillis();
             t.start();
         } catch (IOException e) {
             JOptionPane.showMessageDialog(null, "Не удалось подключиться к серверу");
@@ -167,39 +156,27 @@ public class MyClient extends JFrame {
     }
 
     private void run() {
-        String myNick;
+        String nick;
         try {
             while (true) {
                 if (in.available() > 0) {
                     String str = in.readUTF();
-                    if (str.startsWith("/authok ")) {
-                        setAuthorized(true);
-                        myNick = str.split("\\s")[1];
-                        setTitle(getTitle() + ": " + myNick);
+                    if (str.startsWith("/authok ") || str.startsWith("/changeNickOK ")) {
+                        nick = str.split("\\s")[1];
+                        setTitle(String.format("Клиент: %s", nick));
                         continue;
+                    }
+                    if (str.equals(WRONG_CREDENTIALS) || str.equals(CREDENTIALS_IN_USE)) {
+                        loginField.grabFocus();
                     }
                     chatArea.append(str + "\n");
                 }
-//                if (!isAuthorized && System.currentTimeMillis() - startTime >= AUTH_TIMEOUT) {
-//                    chatArea.append("Превышено время ожидания авторизации. Подключение разорвано.\n");
-//                    out.writeUTF("/end");
-//                    closeConnection();
-//                    return;
-//                }
-//                if (System.currentTimeMillis() - lastSentTime >= SEND_TIMEOUT) {
-//                    chatArea.append("Превышен интервал ожидания отправки нового сообщения. Подключение разорвано.\n");
-//                    out.writeUTF("/end");
-//                    closeConnection();
-//                    return;
-//                }
             }
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
             try {
-                setAuthorized(false);
                 socket.close();
-                myNick = "";
                 setTitle("Клиент");
             } catch (IOException e) {
                 e.printStackTrace();

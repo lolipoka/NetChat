@@ -9,11 +9,15 @@ public class ClientHandler {
     private static final long MINUTE = 60_000L;
     private static final long AUTH_TIMEOUT = 2 * MINUTE;
     private static final long SEND_TIMEOUT = 3 * MINUTE;
+    private static final String WRONG_CREDENTIALS = "Неверные логин/пароль";
+    private static final String CREDENTIALS_IN_USE = "Учетная запись уже используется";
     private final MyServer myServer;
     private final Socket socket;
     private final DataInputStream in;
     private final DataOutputStream out;
+    private final DbService dbService;
     private String name;
+    private long lastSentTime;
 
 
     public String getName() {
@@ -26,9 +30,11 @@ public class ClientHandler {
             this.socket = socket;
             this.in = new DataInputStream(socket.getInputStream());
             this.out = new DataOutputStream(socket.getOutputStream());
+            this.dbService = DbService.getInstance();
             this.name = "";
 
             new Thread(this::run).start();
+
         } catch (IOException e) {
             throw new RuntimeException("Проблемы при создании обработчика клиента");
         }
@@ -52,7 +58,7 @@ public class ClientHandler {
             if (str.startsWith("/auth")) {
                 String[] parts = str.split("\\s");
                 if (parts.length != 3) {
-                    sendMsg("Неверные логин/пароль");
+                    sendMsg(WRONG_CREDENTIALS);
                     continue;
                 }
                 if (System.currentTimeMillis() - startTime >= AUTH_TIMEOUT) {
@@ -72,17 +78,17 @@ public class ClientHandler {
                         myServer.subscribe(this);
                         return;
                     } else {
-                        sendMsg("Учетная запись уже используется");
+                        sendMsg(CREDENTIALS_IN_USE);
                     }
                 } else {
-                    sendMsg("Неверные логин/пароль");
+                    sendMsg(WRONG_CREDENTIALS);
                 }
             }
         }
     }
 
     public void readMessages() throws IOException {
-        long lastSentTime = System.currentTimeMillis();
+        lastSentTime = System.currentTimeMillis();
         while (true) {
             if (System.currentTimeMillis() - lastSentTime >= SEND_TIMEOUT) {
                 sendMsg("Превышен интервал ожидания отправки нового сообщения. Подключение разорвано.\n");
@@ -90,22 +96,56 @@ public class ClientHandler {
                 closeConnection();
                 return;
             }
-            String str = in.readUTF();
-            if (str.startsWith("/")) {
-                if (str.equals("/end")) {
+            String incomingMessage = in.readUTF();
+            if (incomingMessage.startsWith("/")) {
+                if (incomingMessage.equals("/end")) {
                     break;
                 }
-                if (str.startsWith("/w ")) {
-                    String[] tokens = str.split("\\s");
-                    String nick = tokens[1];
-                    String msg = str.substring(4 + nick.length());
-                    myServer.sendMsgToClient(this, nick, msg);
-                    lastSentTime = System.currentTimeMillis();
+                if (incomingMessage.startsWith("/w ")) {
+                    sendPrivateMessage(incomingMessage);
+                }
+                if (incomingMessage.startsWith("/changeNick ")) {
+                    changeNick(incomingMessage);
                 }
                 continue;
             }
-            myServer.broadcastMsg(name + ": " + str);
+            myServer.broadcastMsg(String.format("%s: %s", name, incomingMessage));
             lastSentTime = System.currentTimeMillis();
+        }
+    }
+
+    private void sendPrivateMessage(String incomingMessage) {
+        String[] tokens = incomingMessage.split("\\s");
+        String nick = tokens[1];
+        String msg = incomingMessage.substring(4 + nick.length());
+        myServer.sendMsgToClient(this, nick, msg);
+        lastSentTime = System.currentTimeMillis();
+    }
+
+    private void changeNick(String incomingMessage) {
+        String[] tokens = incomingMessage.split("\\s");
+        String newName;
+        try {
+            newName = tokens[1];
+        } catch (ArrayIndexOutOfBoundsException e) {
+            sendMsg("Не указан новый ник");
+            return;
+        }
+        if (newName == null || newName.trim().isEmpty()) {
+            sendMsg("Не указан новый ник");
+            return;
+        }
+        if (!myServer.isNickBusy(newName)) {
+            boolean success = dbService.changeNick(name, newName);
+            if (success) {
+                sendMsg(String.format("/changeNickOK %s", newName));
+                myServer.broadcastMsg(String.format("%s поменял ник на %s", name, newName));
+                name = newName;
+            } else {
+                sendMsg(String.format("Не удалось поменять ник с %s на %s", name, newName));
+            }
+        } else {
+            sendMsg(CREDENTIALS_IN_USE);
         }
     }
 
