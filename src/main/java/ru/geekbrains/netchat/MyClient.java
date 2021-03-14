@@ -4,14 +4,15 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.stream.Stream;
 
 public class MyClient extends JFrame {
     private static final String WRONG_CREDENTIALS = "Неверные логин/пароль";
     private static final String CREDENTIALS_IN_USE = "Учетная запись уже используется";
+    private static final int HISTORY_LINES_TO_SHOW = 100;
 
     private JTextField msgInputField;
     private JTextArea chatArea;
@@ -21,6 +22,10 @@ public class MyClient extends JFrame {
     private Socket socket;
     private DataInputStream in;
     private DataOutputStream out;
+
+    private final String userHome = System.getProperty("user.home");
+    private String chatLogName;
+    private BufferedWriter writer;
 
     public MyClient() {
         prepareGUI();
@@ -109,6 +114,11 @@ public class MyClient extends JFrame {
             e.printStackTrace();
         }
         try {
+            writer.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        try {
             socket.close();
         } catch (IOException e) {
             e.printStackTrace();
@@ -164,12 +174,20 @@ public class MyClient extends JFrame {
                     if (str.startsWith("/authok ") || str.startsWith("/changeNickOK ")) {
                         nick = str.split("\\s")[1];
                         setTitle(String.format("Клиент: %s", nick));
+                        setChatLogName(nick);
+                        chatArea.setText("");
+                        printLog();
+                        writer = new BufferedWriter(new FileWriter(chatLogName, true));
                         continue;
                     }
                     if (str.equals(WRONG_CREDENTIALS) || str.equals(CREDENTIALS_IN_USE)) {
                         loginField.grabFocus();
                     }
                     chatArea.append(str + "\n");
+                    if (writer != null) {
+                        writer.write(str);
+                        writer.newLine();
+                    }
                 }
             }
         } catch (IOException e) {
@@ -182,6 +200,33 @@ public class MyClient extends JFrame {
                 e.printStackTrace();
             }
         }
+    }
+
+    private void setChatLogName(String nick) {
+        chatLogName = String.format("%s%shistory_%s.txt", userHome, File.separator, nick);
+    }
+
+    private void printLog() {
+        File chatLog = new File(chatLogName);
+        if (chatLog.exists()) {
+            try (BufferedReader reader = new BufferedReader(new FileReader(chatLog))) {
+                ArrayList<String> linesToPrint = getLinesToPrint(reader);
+
+                int startIndex = Math.max(linesToPrint.size() - HISTORY_LINES_TO_SHOW, 0);
+                for (int i = startIndex; i < linesToPrint.size(); i++) {
+                    chatArea.append(linesToPrint.get(i) + "\n");
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private ArrayList<String> getLinesToPrint(BufferedReader reader) {
+        Stream<String> fileLines = reader.lines();
+        ArrayList<String> linesToPrint = new ArrayList<>();
+        fileLines.forEach(linesToPrint::add);
+        return linesToPrint;
     }
 
     public static void main(String[] args) {
