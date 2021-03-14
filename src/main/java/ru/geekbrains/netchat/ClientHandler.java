@@ -33,7 +33,7 @@ public class ClientHandler {
             this.dbService = DbService.getInstance();
             this.name = "";
 
-            new Thread(this::run).start();
+            this.myServer.getThreadPool().execute(this::run);
 
         } catch (IOException e) {
             throw new RuntimeException("Проблемы при создании обработчика клиента");

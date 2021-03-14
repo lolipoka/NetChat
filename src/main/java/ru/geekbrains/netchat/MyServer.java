@@ -5,13 +5,20 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MyServer {
     private List<ClientHandler> clients;
     private AuthService authService;
+    private ExecutorService threadPool;
 
     public AuthService getAuthService() {
         return authService;
+    }
+
+    public ExecutorService getThreadPool() {
+        return threadPool;
     }
 
     public MyServer() {
@@ -21,6 +28,7 @@ public class MyServer {
             authService = new BaseAuthService();
             authService.start();
             clients = new ArrayList<>();
+            threadPool = Executors.newCachedThreadPool();
 
             while (true) {
                 System.out.println("Сервер ожидает подключения");
@@ -33,6 +41,9 @@ public class MyServer {
         } finally {
             if (authService != null) {
                 authService.stop();
+            }
+            if (threadPool != null) {
+                threadPool.shutdownNow();
             }
         }
     }
