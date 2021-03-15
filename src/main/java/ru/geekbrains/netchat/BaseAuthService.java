@@ -1,23 +1,7 @@
 package ru.geekbrains.netchat;
 
-import java.util.ArrayList;
-import java.util.List;
-
 public class BaseAuthService implements AuthService {
-
-    private class Entry {
-        private final String login;
-        private final String pass;
-        private final String nick;
-
-        public Entry(String login, String pass, String nick) {
-            this.login = login;
-            this.pass = pass;
-            this.nick = nick;
-        }
-    }
-
-    private final List<Entry> entries;
+    private final DbService dbService;
 
     @Override
     public void start() {
@@ -31,19 +15,17 @@ public class BaseAuthService implements AuthService {
 
 
     public BaseAuthService() {
-        entries = new ArrayList<>();
-        entries.add(new Entry("login1", "pass1", "nick1"));
-        entries.add(new Entry("login2", "pass2", "nick2"));
-        entries.add(new Entry("login3", "pass3", "nick3"));
+        dbService = DbService.getInstance();
+
+        /* Если база пользователей не существует, создаст её.
+         * В случае существующей базы просто подключится к ней.
+         * Если таблица пользователей создана, то заново не создаётся.
+         * Если пользователи по умолчанию созданы, то заново не создаются. */
+        dbService.createDatabase();
     }
 
     @Override
     public String getNickByLoginPass(String login, String pass) {
-        for (Entry o : entries) {
-            if (o.login.equals(login) && o.pass.equals(pass)) {
-                return o.nick;
-            }
-        }
-        return null;
+        return dbService.getNickByLoginPass(login, pass);
     }
 }
